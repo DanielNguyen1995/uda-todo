@@ -6,6 +6,7 @@ import { UpdateTodoRequest } from '../requests/UpdateTodoRequest'
 import { getS3PresignUrl } from '../attachment/attachementHelper'
 import { env } from 'process'
 import { String } from 'aws-sdk/clients/batch'
+import * as uuid from 'uuid'
 
 const AWSXRay = require('aws-xray-sdk')
 const XAWS = AWSXRay.captureAWS(AWS)
@@ -14,7 +15,8 @@ const logger = createLogger('TodosAccess')
 export class TodoAccess {
     constructor(
         private readonly docClient: DocumentClient = new XAWS.DynamoDB.DocumentClient(),
-        private readonly todosTable = env.TODOS_TABLE) { }
+        private readonly todosTable = env.TODOS_TABLE,
+        private readonly bucketName = env.ATTACHMENT_S3_BUCKET) { }
 
     getTodos = async (userId: string): Promise<TodoItem[]> => {
         logger.log('info', 'Get todos for user: '.concat(userId))
@@ -71,7 +73,8 @@ export class TodoAccess {
     }
 
     getUploadURL = async (userId: string, todoId: string): Promise<String> => {
-        const url = await getS3PresignUrl()
+        const imageId = uuid.v4()
+        const presignedUrl = await getS3PresignUrl(imageId)
         this.docClient.update({
             TableName: this.todosTable,
             Key: {
@@ -80,7 +83,7 @@ export class TodoAccess {
             },
             UpdateExpression: "set attachmentUrl = :attachmentUrl",
             ExpressionAttributeValues: {
-                ":attachmentUrl": url,
+                ":attachmentUrl": `https://${this.bucketName}.s3.amazonaws.com/${imageId}`,
             }
         }, (err, data) => {
             if (err) {
@@ -89,6 +92,6 @@ export class TodoAccess {
             }
             logger.log('info', 'Created presign URL: '.concat(JSON.stringify(data)))
         })
-        return url
+        return presignedUrl
     }
 }
